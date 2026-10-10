@@ -55,6 +55,7 @@ namespace EasyEDA_Loader
                 case "ComponentShapeLayer": return TLayerConstant.eMechanical9;
                 case "LeadShapeLayer": return TLayerConstant.eMechanical10;
                 case "ComponentMarkingLayer": return TLayerConstant.eMechanical11;
+                case "ComponentPolarityLayer": return TLayerConstant.eMechanical12;
                 default: throw new LayerMapException($"Invalid layer {layer}");
             }
         }

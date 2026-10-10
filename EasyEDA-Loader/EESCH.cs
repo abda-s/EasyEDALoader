@@ -161,6 +161,30 @@ namespace EasyEDA_Loader
             c.AddSchObject(line);
         }
 
+        // points are (x, y) pairs in mils
+        public static void CreatePolyline(ISch_Lib schLib, ISch_Component c, int color, params double[] points)
+        {
+            var poly = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.ePolyline, SCH.TObjectCreationMode.eCreate_Default) as ISch_Polyline;
+            if (poly == null)
+                return;
+
+            int count = points.Length / 2;
+            poly.SetState_LineWidth(TSize.eSmall);
+            poly.SetState_VerticesCount(count);
+            for (int i = 0; i < count; i++)
+            {
+                poly.SetState_Vertex(i + 1, new DXP.Point
+                {
+                    X = AltiumApi.MilsToCoord(points[i * 2]),
+                    Y = AltiumApi.MilsToCoord(points[i * 2 + 1])
+                });
+            }
+            poly.SetState_Color(color);
+            poly.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+            poly.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+            c.AddSchObject(poly);
+        }
+
         public static void AssignFootprint(ISch_Component c, string libraryPath, string modelName, string modelMapping)
         {
             var modelType = "PCBLIB";

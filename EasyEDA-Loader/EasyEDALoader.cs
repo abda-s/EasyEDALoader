@@ -155,7 +155,10 @@ namespace EasyEDA_Loader
                         if (schLib != null && component != null)
                         {
                             AltiumApi.GlobalVars.PCBServer.PreProcess();
-                            SymbolDrawing.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol);
+                            if (CelestialPassives.IsSupported(ee_symbol.Head.Parameters.Pre))
+                                CelestialPassives.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol);
+                            else
+                                SymbolDrawing.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol);
 
                             if (productInfo?.Parameters != null)
                             {
@@ -189,12 +192,7 @@ namespace EasyEDA_Loader
             // Return to the original document we started in
             AltiumApi.GlobalVars.Client.ShowDocument(currentDoc);
 
-            if (ImportLog.ErrorCount > 0)
-            {
-                MessageBox.Show(
-                    $"{ImportLog.ErrorCount} primitive(s) failed to import. Details were written to:\n{ImportLog.LogPath}",
-                    "EasyEDA Loader", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+            // Primitive failures are logged silently to ImportLog.LogPath (no popup)
 
             // Close the library documents if requested
             if (dialog.CloseDocuments)

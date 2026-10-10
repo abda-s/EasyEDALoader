@@ -1,3 +1,41 @@
+# Local changes (FSUK-BMS)
+
+This copy has been modified for Altium Designer 25 and the FSUK-BMS project.
+
+## Celestial-style passive symbols
+
+Resistors (designator prefix `R`) no longer come in as a generic box. They are drawn with the same symbol as the Celestial library's `SCH - PASSIVES - RESISTOR.SCHLIB`, see [CelestialPassives.cs](/EasyEDA-Loader/CelestialPassives.cs):
+
+- Pin 1 at (-100, 0) mil, rotated 180°, 100 mil long. Pin 2 at (100, 0) mil, rotated 0°, 100 mil long. Pins are black.
+- The body is blue (`RGB(0,0,255)`) polylines with the Small line width: leads (-100,0)→(-60,0) and (100,0)→(60,0), plus a zigzag through ±30 mil.
+
+The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part still uses the normal auto-generated symbol.
+
+To add another passive (capacitor is next), open the Celestial symbol in Altium and read off each pin's location, rotation and length, plus every line/polyline vertex, from the Properties panel. Then fill in the matching block in `CelestialPassives.CreateComponent` and add the prefix to `IsSupported`. `EESCH.CreatePolyline` draws a polyline from a list of (x, y) pairs in mils.
+
+> **The cached symbol trap:** if a part with the same name already exists in `Documents/AltiumEE/EasyEDA.SchLib`, the loader reuses it and never runs the drawing code. Delete the old part from the SchLib before re-importing it to see a symbol change.
+
+## Other changes
+
+- **No error popup after import.** Primitive import failures are still written to `Documents/AltiumEE/import-errors.log`, but the warning dialog was removed.
+- **`ComponentPolarityLayer`** in EasyEDA footprints is mapped to Mechanical 12, instead of throwing a layer-map error.
+- **Altium Designer 25:** the project targets `net8.0-windows` and references DevExpress **v25.2** assemblies, copied from the AD25 install into `EasyEDA-Loader/Assemblies/` (gitignored).
+
+## Build & deploy (no Visual Studio needed)
+
+`Build.ps1` needs MSBuild. With only the .NET 8 SDK installed, build with `dotnet` instead. It **must** be the Release configuration, because `Package.ps1` copies from `bin\Release`:
+
+```powershell
+cd C:\dev\EasyEDALoader
+dotnet build "EasyEDA-Loader\EasyEDA-Loader.csproj" -c Release
+.\Package.ps1
+.\Deploy.ps1          # close Altium first, it locks the DLL
+```
+
+Then start Altium. To confirm the deploy worked, check that `C:\ProgramData\Altium\Altium Designer {GUID}\Extensions\EasyEDA-Loader\EasyEDA-Loader.dll` has the same timestamp as `dist\EasyEDA-Loader.dll`.
+
+---
+
 # Motivations / Inspirations
 
 Sourcing parts from JLCPCB can be a bit of a pain when you don't have the footprint, the symbol, or the model. 

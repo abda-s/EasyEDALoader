@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
     <AssemblyName>EasyEDA-Loader</AssemblyName>
     <RootNamespace>EasyEDA_Loader</RootNamespace>
@@ -23,13 +23,13 @@
     <Reference Include="Altium.Controls.Skins"><HintPath>Assemblies\Altium.Controls.Skins.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Altium.SDK"><HintPath>Assemblies\Altium.SDK.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Altium.SDK.Interfaces"><HintPath>Assemblies\Altium.SDK.Interfaces.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Data.v22.1"><HintPath>Assemblies\DevExpress.Data.v22.1.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Mvvm.v22.1"><HintPath>Assemblies\DevExpress.Mvvm.v22.1.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Printing.v22.1.Core"><HintPath>Assemblies\DevExpress.Printing.v22.1.Core.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Utils.v22.1"><HintPath>Assemblies\DevExpress.Utils.v22.1.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Xpf.Core.v22.1"><HintPath>Assemblies\DevExpress.Xpf.Core.v22.1.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Xpf.Grid.v22.1.Core"><HintPath>Assemblies\DevExpress.Xpf.Grid.v22.1.Core.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="DevExpress.Xpf.Grid.v22.1"><HintPath>Assemblies\DevExpress.Xpf.Grid.v22.1.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Data.v25.2"><HintPath>Assemblies\DevExpress.Data.v25.2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Mvvm.v25.2"><HintPath>Assemblies\DevExpress.Mvvm.v25.2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Printing.v25.2.Core"><HintPath>Assemblies\DevExpress.Printing.v25.2.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Utils.v25.2"><HintPath>Assemblies\DevExpress.Utils.v25.2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Xpf.Core.v25.2"><HintPath>Assemblies\DevExpress.Xpf.Core.v25.2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Xpf.Grid.v25.2.Core"><HintPath>Assemblies\DevExpress.Xpf.Grid.v25.2.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="DevExpress.Xpf.Grid.v25.2"><HintPath>Assemblies\DevExpress.Xpf.Grid.v25.2.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
   <ItemGroup>
