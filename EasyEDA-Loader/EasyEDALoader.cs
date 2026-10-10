@@ -162,9 +162,13 @@ namespace EasyEDA_Loader
 
                             if (productInfo?.Parameters != null)
                             {
+                                bool isResistor = CelestialPassives.IsResistor(ee_symbol.Head.Parameters.Pre);
                                 foreach (var kvp in productInfo.Parameters)
                                 {
-                                    EESCH.AddParameter(component, kvp.Key, kvp.Value);
+                                    if (isResistor && kvp.Key == "Value")
+                                        CelestialPassives.AddValueParameter(component, CelestialPassives.FormatResistance(kvp.Value));
+                                    else
+                                        EESCH.AddParameter(component, kvp.Key, kvp.Value);
                                 }
                             }
 

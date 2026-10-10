@@ -9,6 +9,8 @@ Resistors (designator prefix `R`) no longer come in as a generic box. They are d
 - Pin 1 at (-100, 0) mil, rotated 180°, 100 mil long. Pin 2 at (100, 0) mil, rotated 0°, 100 mil long. Pins are black.
 - The body is blue (`RGB(0,0,255)`) polylines with the Small line width: leads (-100,0)→(-60,0) and (100,0)→(60,0), plus a zigzag through ±30 mil.
 
+- The value is shown in RKM code instead of the part number (12.7kΩ → `12K7`, 4.7kΩ → `4K7`, 60Ω → `60R`, 100kΩ → `100K`, 0.1Ω → `0R1`). The `Value` parameter is visible at (0, -90) and the designator is at (0, +90), both centre-justified with Autoposition off. Autoposition is off because `PlaceComponent` rotates the placed part, and that rotation would otherwise move the text. The comment is set to `=Value` but hidden.
+
 The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part still uses the normal auto-generated symbol.
 
 To add another passive (capacitor is next), open the Celestial symbol in Altium and read off each pin's location, rotation and length, plus every line/polyline vertex, from the Properties panel. Then fill in the matching block in `CelestialPassives.CreateComponent` and add the prefix to `IsSupported`. `EESCH.CreatePolyline` draws a polyline from a list of (x, y) pairs in mils.

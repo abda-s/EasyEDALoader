@@ -21,6 +21,69 @@ namespace EasyEDA_Loader
             return key == "R"; // TODO: add "C" once the capacitor geometry is filled in below
         }
 
+        public static bool IsResistor(string designatorPrefix) => NormalizePrefix(designatorPrefix) == "R";
+
+        // Converts an LCSC value like "12.7kΩ" into RKM code: 12K7, 4K7, 60R, 100K, 0R1, 2M2.
+        // Returns the input unchanged if it can't be parsed.
+        public static string FormatResistance(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return value;
+
+            var m = System.Text.RegularExpressions.Regex.Match(value.Trim(), @"^([0-9]*\.?[0-9]+)\s*([kKmMgG]?)\s*(Ω|ohms?|R)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success)
+                return value;
+
+            if (!decimal.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out decimal number))
+                return value;
+
+            // Case matters for the multiplier: m = milli, M = mega
+            switch (m.Groups[2].Value)
+            {
+                case "k": case "K": number *= 1_000m; break;
+                case "M": number *= 1_000_000m; break;
+                case "G": case "g": number *= 1_000_000_000m; break;
+                case "m": number /= 1_000m; break;
+            }
+
+            string letter;
+            decimal scaled;
+            if (number >= 1_000_000_000m) { letter = "G"; scaled = number / 1_000_000_000m; }
+            else if (number >= 1_000_000m) { letter = "M"; scaled = number / 1_000_000m; }
+            else if (number >= 1_000m) { letter = "K"; scaled = number / 1_000m; }
+            else { letter = "R"; scaled = number; }
+
+            string text = scaled.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            int dot = text.IndexOf('.');
+            return dot < 0 ? text + letter : text.Substring(0, dot) + letter + text.Substring(dot + 1);
+        }
+
+        // Visible Value parameter at (0,-90) centred, as in the reference symbol
+        public static void AddValueParameter(ISch_Component c, string value)
+        {
+            ISch_Parameter param = c.AddSchParameter();
+            param.SetState_Name("Value");
+            param.SetState_Text(value);
+            param.SetState_ShowName(false);
+            param.SetState_IsHidden(false);
+            PlaceText(param, 0, -90);
+        }
+
+        // Centre-justified, with autoposition off - otherwise Altium re-positions
+        // the text as soon as the placed part is rotated (PlaceComponent does that).
+        private static void PlaceText(ISch_Parameter text, double x, double y)
+        {
+            if (text == null)
+                return;
+            text.SetState_Location(new DXP.Point
+            {
+                X = AltiumApi.MilsToCoord(x),
+                Y = AltiumApi.MilsToCoord(y)
+            });
+            text.SetState_Justification(TTextJustification.eJustify_Center);
+            text.SetState_Autoposition(false);
+        }
+
         private static string NormalizePrefix(string pre)
         {
             if (string.IsNullOrEmpty(pre))
@@ -55,6 +118,12 @@ namespace EasyEDA_Loader
                 EESCH.CreatePolyline(schLib, component, Blue, -10, 30, -30, -30, -50, 30, -60, 0);
                 EESCH.CreatePolyline(schLib, component, Blue, -10, 30, 10, -30, 30, 30, 50, -30, 60, 0);
                 EESCH.CreatePolyline(schLib, component, Blue, 100, 0, 60, 0);
+
+                // Designator above the zigzag; the visible Value parameter (AddValueParameter)
+                // goes below it, so the comment is kept for the BOM but hidden.
+                PlaceText(component.GetState_SchDesignator(), 0, 90);
+                component.GetState_SchComment().SetState_Text("=Value");
+                component.GetState_SchComment().SetState_IsHidden(true);
             }
             else if (prefix == "C")
             {
