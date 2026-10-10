@@ -4,16 +4,18 @@ This copy has been modified for Altium Designer 25 and the FSUK-BMS project.
 
 ## Celestial-style passive symbols
 
-Resistors (designator prefix `R`) no longer come in as a generic box. They are drawn with the same symbol as the Celestial library's `SCH - PASSIVES - RESISTOR.SCHLIB`, see [CelestialPassives.cs](/EasyEDA-Loader/CelestialPassives.cs):
+Resistors (prefix `R`) and capacitors (prefix `C`) no longer come in as a generic box. They are drawn with the same symbols as the Celestial library's `SCH - PASSIVES - RESISTOR.SCHLIB` and `SCH - PASSIVES - CAPACITOR.SCHLIB`, see [CelestialPassives.cs](/EasyEDA-Loader/CelestialPassives.cs). The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part still uses the normal auto-generated symbol.
 
-- Pin 1 at (-100, 0) mil, rotated 180°, 100 mil long. Pin 2 at (100, 0) mil, rotated 0°, 100 mil long. Pins are black.
-- The body is blue (`RGB(0,0,255)`) polylines with the Small line width: leads (-100,0)→(-60,0) and (100,0)→(60,0), plus a zigzag through ±30 mil.
+| | Resistor | Capacitor |
+|---|---|---|
+| Pins | Pin 1 (-100, 0) rot 180°, pin 2 (100, 0) rot 0°, 100 mil long, black. Numbers and names hidden (name = number) | Same |
+| Body | Blue (`RGB(0,0,255)`) polylines, Small width: leads to ±60, zigzag through ±30 mil | Leads to ±25, plates at x = ±25 from y = -80 to +80 |
+| Value | RKM code: 12.7kΩ → `12K7`, 4.7kΩ → `4K7`, 60Ω → `60R`, 100kΩ → `100K`, 0.1Ω → `0R1` | 100nF → `100n`, 4.7uF → `4u7`, 2.2nF → `2n2`, 10pF → `10p`, 0.1uF → `100n` |
+| Text | Designator at (0, +90), `Value` parameter visible at (0, -90) | Same layout at ±140, to clear the plates |
 
-- The value is shown in RKM code instead of the part number (12.7kΩ → `12K7`, 4.7kΩ → `4K7`, 60Ω → `60R`, 100kΩ → `100K`, 0.1Ω → `0R1`). The `Value` parameter is visible at (0, -90) and the designator is at (0, +90), both centre-justified with Autoposition off. Autoposition is off because `PlaceComponent` rotates the placed part, and that rotation would otherwise move the text. The comment is set to `=Value` but hidden.
+All text is centre-justified with Autoposition off. Autoposition is off because `PlaceComponent` rotates the placed part, and that rotation would otherwise move the text. The comment is set to `=Value` (kept for the BOM) but hidden. Values that can't be parsed are left as they come from LCSC.
 
-The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part still uses the normal auto-generated symbol.
-
-To add another passive (capacitor is next), open the Celestial symbol in Altium and read off each pin's location, rotation and length, plus every line/polyline vertex, from the Properties panel. Then fill in the matching block in `CelestialPassives.CreateComponent` and add the prefix to `IsSupported`. `EESCH.CreatePolyline` draws a polyline from a list of (x, y) pairs in mils.
+To add another passive (e.g. inductor), open the Celestial symbol in Altium and read off each pin's location, rotation and length, plus every line/polyline vertex, from the Properties panel. Then add a block in `CelestialPassives.CreateComponent`, add the prefix to `IsSupported`, and set its text offset in `TextOffset` (and a formatter in `FormatValue` if needed). `EESCH.CreatePolyline` draws a polyline from a list of (x, y) pairs in mils.
 
 > **The cached symbol trap:** if a part with the same name already exists in `Documents/AltiumEE/EasyEDA.SchLib`, the loader reuses it and never runs the drawing code. Delete the old part from the SchLib before re-importing it to see a symbol change.
 
