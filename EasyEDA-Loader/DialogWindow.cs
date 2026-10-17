@@ -141,7 +141,7 @@ namespace EasyEDA_Loader
 
                 if (_currentComponent.Symbol?.Shapes != null)
                 {
-                    SymbolDrawing.DrawComponent(symbolCanvas, _currentComponent.Symbol);
+                    SymbolDrawing.DrawComponent(symbolCanvas, _currentComponent.Symbol, partViewModel.PartInfo.Info?.Description ?? partViewModel.PartInfo.Description);
                     _ = symbolCanvas.Dispatcher.InvokeAsync(() =>
                     {
                         _symbolHelper.FitToBoundingBox();

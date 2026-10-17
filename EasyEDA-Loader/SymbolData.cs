@@ -76,6 +76,9 @@ namespace EasyEDA_Loader
 
         [JsonProperty("JLCPCB Part Class")]
         public string JLCPCBPartClass { get; set; }
+
+        [JsonProperty("Value")]
+        public string Value { get; set; }
     }
     public class SymbolData
     {

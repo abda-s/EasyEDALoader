@@ -334,13 +334,16 @@ namespace EasyEDA_Loader
         }
 
         // Draws the converted symbol exactly as it will be created in Altium (1 canvas unit = 1 mil).
-        static public void DrawComponent(Canvas c, SymbolData symbol)
+        // description: the part's LCSC description, used to spot resistors/capacitors.
+        static public void DrawComponent(Canvas c, SymbolData symbol, string description = null)
         {
             if (symbol?.Shapes == null)
                 return;
             c.Children.Clear();
 
-            var g = SymbolConverter.Convert(symbol);
+            // Resistors and capacitors preview with the Celestial symbol they'll be imported as.
+            string passiveKind = CelestialPassives.Classify(symbol, description);
+            var g = passiveKind != null ? CelestialPassives.PreviewGeometry(passiveKind, symbol) : SymbolConverter.Convert(symbol);
             if (g.Pins.Count == 0 && g.Rects.Count == 0 && g.Polys.Count == 0 && g.Ellipses.Count == 0 && g.Arcs.Count == 0)
                 return;
 

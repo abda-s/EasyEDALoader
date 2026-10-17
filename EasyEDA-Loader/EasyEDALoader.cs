@@ -187,23 +187,27 @@ namespace EasyEDA_Loader
                         if (schLib != null && component != null)
                         {
                             AltiumApi.GlobalVars.PCBServer.PreProcess();
-                            if (CelestialPassives.IsSupported(ee_symbol.Head.Parameters.Pre))
-                                CelestialPassives.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol);
+                            string passiveKind = CelestialPassives.Classify(ee_symbol, productInfo?.Description ?? selection.PartInfo.Description);
+                            if (passiveKind != null)
+                                CelestialPassives.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol, passiveKind);
                             else
                                 SymbolDrawing.CreateComponent(schLib, component, pcbLibraryPath, package, ee_symbol);
 
                             if (productInfo?.Parameters != null)
                             {
-                                string pre = ee_symbol.Head.Parameters.Pre;
-                                bool isPassive = CelestialPassives.IsSupported(pre);
                                 foreach (var kvp in productInfo.Parameters)
                                 {
-                                    if (isPassive && kvp.Key == "Value")
-                                        CelestialPassives.AddValueParameter(component, pre, kvp.Value);
+                                    if (passiveKind != null && kvp.Key == "Value")
+                                        CelestialPassives.AddValueParameter(component, passiveKind, kvp.Value);
                                     else
                                         EESCH.AddParameter(component, kvp.Key, kvp.Value);
                                 }
                             }
+
+                            // No Value from LCSC's product info: use the one in the symbol data.
+                            bool hasValue = productInfo?.Parameters?.ContainsKey("Value") == true;
+                            if (passiveKind != null && !hasValue && !string.IsNullOrWhiteSpace(ee_symbol.Head.Parameters.Value))
+                                CelestialPassives.AddValueParameter(component, passiveKind, ee_symbol.Head.Parameters.Value);
 
                             AltiumApi.GlobalVars.PCBServer.PostProcess();
                             schLib.SetState_Current_SchComponent(component);
