@@ -13,7 +13,7 @@ using System.Windows.Media.Imaging;
 
 namespace EasyEDA_Loader
 {
-    public class EasyedaApi
+    public partial class EasyedaApi
     {
         private const string Version = "6.4.19.5";
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
@@ -51,44 +51,48 @@ namespace EasyEDA_Loader
             }
         }
 
+        // How long each kind of response is trusted before asking EasyEDA again. Older copies
+        // are still served if EasyEDA is unreachable or blocking us.
+        private static readonly TimeSpan PartLifetime = TimeSpan.FromDays(90);      // symbol/footprint JSON
+        private static readonly TimeSpan ImageLifetime = TimeSpan.FromDays(365);    // part photos
+        private static readonly TimeSpan ModelLifetime = TimeSpan.MaxValue;         // 3D models are addressed by uuid: immutable
+        private static readonly TimeSpan SearchLifetime = TimeSpan.FromHours(12);   // stock and price move daily
+        private static readonly TimeSpan InfoLifetime = TimeSpan.FromDays(30);
+
+        private static bool IsJsonWithResult(string text)
+        {
+            try
+            {
+                var obj = JObject.Parse(text);
+                return obj["result"] != null && obj["result"].Type != JTokenType.Null;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static HttpRequestMessage ProRequest(HttpMethod method, string url, HttpContent content = null)
+        {
+            var request = new HttpRequestMessage(method, url) { Content = content };
+            request.Headers.Add("Referer", "https://pro.easyeda.com/editor");
+            request.Headers.Add("Origin", "https://pro.easyeda.com");
+            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            return request;
+        }
+
         public async Task<Root> GetComponentJsonAsync(string lcscId, CancellationToken cancellationToken)
         {
             string url = $"https://easyeda.com/api/products/{lcscId}/components?version={Version}";
-            Debug.WriteLine($"[API] GET Request: {url}");
-            Console.WriteLine($"[API] GET Request: {url}");
-
             try
             {
-                var response = await HttpClient.GetAsync(url, cancellationToken);
-                Debug.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                
-                response.EnsureSuccessStatusCode();
-                var content = await response.Content.ReadAsStringAsync();
-                
-                Debug.WriteLine($"[API] Response Length: {content.Length} characters");
-                Console.WriteLine($"[API] Response Length: {content.Length} characters");
-                LogResponse(content);
-                
-                var result = JsonConvert.DeserializeObject<Root>(content);
-                Debug.WriteLine($"[API] Deserialized successfully");
-                Console.WriteLine($"[API] Deserialized successfully");
-                
-                return result;
+                string content = await ApiCache.GetTextAsync("parts", lcscId.Trim().ToUpperInvariant(), PartLifetime,
+                    HttpClient, () => new HttpRequestMessage(HttpMethod.Get, url), IsJsonWithResult, cancellationToken);
+                return JsonConvert.DeserializeObject<Root>(content);
             }
-            catch (OperationCanceledException cancel)
+            catch (OperationCanceledException)
             {
-                Debug.WriteLine($"[API] Download was cancelled: {cancel.Message}");
-                Console.WriteLine($"Download was cancelled: {cancel.Message}");
                 return null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Error: {ex.Message}");
-                Debug.WriteLine($"[API] Stack Trace: {ex.StackTrace}");
-                Console.WriteLine($"[API] Error: {ex.Message}");
-                Console.WriteLine($"[API] Stack Trace: {ex.StackTrace}");
-                throw ex;
             }
         }
 
@@ -96,119 +100,55 @@ namespace EasyEDA_Loader
         {
             // Add the host path if it doesnt exist
             if (!imageUrl.Contains("//"))
-            {
                 imageUrl = "//image.lceda.cn" + imageUrl;
-            }
-
             string fullUrl = $"https:{imageUrl}";
-            Debug.WriteLine($"[API] GET Request (Image): {fullUrl}");
-            Console.WriteLine($"[API] GET Request (Image): {fullUrl}");
 
             try
             {
-                var res = await HttpClient.GetAsync(fullUrl, cancellationToken);
-                Debug.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                
-                res.EnsureSuccessStatusCode();
-                var imageData = await res.Content.ReadAsByteArrayAsync();
-                
-                Debug.WriteLine($"[API] Image Data Length: {imageData.Length} bytes");
-                Console.WriteLine($"[API] Image Data Length: {imageData.Length} bytes");
+                var imageData = await ApiCache.GetBytesAsync("images", fullUrl, ImageLifetime,
+                    HttpClient, () => new HttpRequestMessage(HttpMethod.Get, fullUrl), b => b.Length > 0, cancellationToken);
 
                 var bitmap = new BitmapImage();
-                var stream = new MemoryStream(imageData);
-
                 bitmap.BeginInit();
                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.StreamSource = stream;
+                bitmap.StreamSource = new MemoryStream(imageData);
                 bitmap.EndInit();
                 bitmap.Freeze();
-                
-                Debug.WriteLine($"[API] Image loaded successfully");
-                Console.WriteLine($"[API] Image loaded successfully");
                 return bitmap;
             }
-            catch (OperationCanceledException cancel)
+            catch (OperationCanceledException)
             {
-                Debug.WriteLine($"[API] Download was cancelled: {cancel.Message}");
-                Console.WriteLine($"Download was cancelled: {cancel.Message}");
                 return null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Error loading image: {ex.Message}");
-                Console.WriteLine($"[API] Error loading image: {ex.Message}");
-                throw ex;
             }
         }
 
         public async Task<byte[]> LoadModelAsync(string modelUuid, CancellationToken cancellationToken)
         {
             string url = $"https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{modelUuid}";
-            Debug.WriteLine($"[API] GET Request (Model): {url}");
-            Console.WriteLine($"[API] GET Request (Model): {url}");
-
             try
             {
-                var res = await HttpClient.GetAsync(url, cancellationToken);
-                Debug.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                
-                res.EnsureSuccessStatusCode();
-                var data = await res.Content.ReadAsByteArrayAsync();
-                
-                Debug.WriteLine($"[API] Model Data Length: {data.Length} bytes");
-                Console.WriteLine($"[API] Model Data Length: {data.Length} bytes");
-                return data;
+                return await ApiCache.GetBytesAsync("models", url, ModelLifetime,
+                    HttpClient, () => new HttpRequestMessage(HttpMethod.Get, url), b => b.Length > 0, cancellationToken);
             }
-            catch (OperationCanceledException cancel)
+            catch (OperationCanceledException)
             {
-                Debug.WriteLine($"[API] Download was cancelled: {cancel.Message}");
-                Console.WriteLine($"Download was cancelled: {cancel.Message}");
                 return null;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Error loading model: {ex.Message}");
-                Console.WriteLine($"[API] Error loading model: {ex.Message}");
-                throw ex;
             }
         }
 
         public async Task<byte[]> LoadRawModelAsync(string modelUuid, CancellationToken cancellationToken)
         {
             string url = $"https://modules.easyeda.com/3dmodel/{modelUuid}";
-            Debug.WriteLine($"[API] GET Request (Raw Model): {url}");
-            Console.WriteLine($"[API] GET Request (Raw Model): {url}");
-
             try
             {
-                var res = await HttpClient.GetAsync(url, cancellationToken);
-                Debug.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)res.StatusCode} {res.StatusCode}");
-                
-                res.EnsureSuccessStatusCode();
-                var data = await res.Content.ReadAsByteArrayAsync();
-                
-                Debug.WriteLine($"[API] Raw Model Data Length: {data.Length} bytes");
-                Console.WriteLine($"[API] Raw Model Data Length: {data.Length} bytes");
-                return data;
+                return await ApiCache.GetBytesAsync("models", url, ModelLifetime,
+                    HttpClient, () => new HttpRequestMessage(HttpMethod.Get, url), b => b.Length > 0, cancellationToken);
             }
-            catch (OperationCanceledException cancel)
+            catch (OperationCanceledException)
             {
-                Debug.WriteLine($"[API] Download was cancelled: {cancel.Message}");
-                Console.WriteLine($"Download was cancelled: {cancel.Message}");
                 return null;
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Error loading raw model: {ex.Message}");
-                Console.WriteLine($"[API] Error loading raw model: {ex.Message}");
-                throw ex;
-            }
         }
-
         public class PartInfo
         {
             public string Name { get; set; }
@@ -218,6 +158,12 @@ namespace EasyEDA_Loader
             public bool HasSymbol { get; set; }
             public bool Has3d { get; set; }
             public bool HasFootprint { get; set; }
+            public string Manufacturer { get; set; }
+            public string Package { get; set; }
+            public long Stock { get; set; }
+            public string Price { get; set; }       // unit price at the lowest quantity break, USD
+            public string PriceBreaks { get; set; } // e.g. "1+: $2.1579  10+: $1.8426"
+            public string PartClass { get; set; }   // JLCPCB "Basic" / "Extended"
         }
 
         public class ProductInfo
@@ -230,10 +176,7 @@ namespace EasyEDA_Loader
         }
         public async Task<ProductInfo> GetProductInfoAsync(string search, string uuid)
         {
-            string url = $"https://pro.easyeda.com/api/v2/devices/search";
-            Debug.WriteLine($"[API] POST Request: {url}");
-            Console.WriteLine($"[API] POST Request: {url}");
-            
+            string url = "https://pro.easyeda.com/api/v2/devices/search";
             var formData = new Dictionary<string, string>
             {
                 { "page", "1" },
@@ -243,34 +186,11 @@ namespace EasyEDA_Loader
                 { "wd", search.ToLower() },
                 { "returnListStyle", "classifyarr" }
             };
-            
-            Debug.WriteLine($"[API] Request Data: {string.Join(", ", formData.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-            Console.WriteLine($"[API] Request Data: {string.Join(", ", formData.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-            
-            var content = new FormUrlEncodedContent(formData);
-            
-            var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Content = content;
-            request.Headers.Add("Referer", "https://pro.easyeda.com/editor");
-            request.Headers.Add("Origin", "https://pro.easyeda.com");
-            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
-            request.Headers.Add("sec-fetch-dest", "empty");
-            request.Headers.Add("sec-fetch-mode", "cors");
-            request.Headers.Add("sec-fetch-site", "same-origin");
 
             try
             {
-                var response = await HttpClient.SendAsync(request);
-                Debug.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                
-                response.EnsureSuccessStatusCode();
-                string result = await response.Content.ReadAsStringAsync();
-                
-                Debug.WriteLine($"[API] Response Length: {result.Length} characters");
-                Console.WriteLine($"[API] Response Length: {result.Length} characters");
-                LogResponse(result);
-                
+                string result = await ApiCache.GetTextAsync("info", $"{uuid}|{search.ToLower()}", InfoLifetime, HttpClient,
+                    () => ProRequest(HttpMethod.Post, url, new FormUrlEncodedContent(formData)), IsJsonWithResult, CancellationToken.None);
                 JObject obj = JObject.Parse(result);
                 JObject obj_info = (JObject)obj["result"]["lists"]["lcsc"][0];
                 var attributes = obj_info["attributes"].ToObject<Dictionary<string, string>>();
@@ -279,7 +199,6 @@ namespace EasyEDA_Loader
             catch (Exception ex)
             {
                 Debug.WriteLine($"[API] Error: {ex.Message}");
-                Console.WriteLine($"[API] Error: {ex.Message}");
                 return null;
             }
         }
@@ -349,89 +268,18 @@ namespace EasyEDA_Loader
 
         public async Task<List<PartInfo>> SearchProductInfoAsync(string lcscId)
         {
-            // The server now reads the part number from the query string and ignores the JSON body
-            string url = $"https://pro.easyeda.com/api/v2/eda/product/search?keyword={lcscId}";
-            Debug.WriteLine($"[API] POST Request: {url}");
-            Console.WriteLine($"[API] POST Request: {url}");
+            // The server reads the keyword from the query string and ignores the JSON body
+            string keyword = (lcscId ?? "").Trim();
+            string url = $"https://pro.easyeda.com/api/v2/eda/product/search?keyword={Uri.EscapeDataString(keyword)}";
+            string payload = JsonConvert.SerializeObject(new { codes = keyword });
 
-            var payload = new
-            {
-                codes = lcscId
-            };
-            
-            string jsonPayload = JsonConvert.SerializeObject(payload);
-            Debug.WriteLine($"[API] Request Payload: {jsonPayload}");
-            Console.WriteLine($"[API] Request Payload: {jsonPayload}");
+            string result = await ApiCache.GetTextAsync("search", keyword.ToUpperInvariant(), SearchLifetime, HttpClient,
+                () => ProRequest(HttpMethod.Post, url, new StringContent(payload, Encoding.UTF8, "application/json")),
+                IsJsonWithResult, CancellationToken.None);
 
-            var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            
-            var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Content = content;
-            request.Headers.Add("Referer", "https://pro.easyeda.com/editor");
-            request.Headers.Add("Origin", "https://pro.easyeda.com");
-            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
-            request.Headers.Add("sec-fetch-dest", "empty");
-            request.Headers.Add("sec-fetch-mode", "cors");
-            request.Headers.Add("sec-fetch-site", "same-origin");
-            
-            try
-            {
-                var response = await HttpClient.SendAsync(request);
-                Debug.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                Console.WriteLine($"[API] Response Status: {(int)response.StatusCode} {response.StatusCode}");
-                
-                response.EnsureSuccessStatusCode();
-                string result = await response.Content.ReadAsStringAsync();
-                
-                Debug.WriteLine($"[API] Response Length: {result.Length} characters");
-                Console.WriteLine($"[API] Response Length: {result.Length} characters");
-                LogResponse(result);
-                
-                JObject obj = JObject.Parse(result);
-                JArray products = (JArray)obj["result"]["productList"];
-                List<PartInfo> productList = new();
-                foreach(var product in products)
-                {
-                    ProductInfo productInfo = new ProductInfo();
-                    bool has3d = false;
-                    bool hasSymbol = false;
-                    bool hasFootprint = false;
-                    try
-                    {
-                        JObject device_info = (JObject)product["device_info"];
-                        var attributes = device_info["attributes"].ToObject<Dictionary<string, string>>();
-                        productInfo = ProductFromAttributes(attributes, device_info != null ? device_info["Description"].ToString() : "");
-                        
-                        hasSymbol = device_info["symbol_info"] != null;
-                        hasFootprint = device_info["footprint_info"] != null;
-                        has3d = device_info["footprint_info"]?["model_3d"] != null;
-                    }
-                    catch (Exception)
-                    {
-
-                    }
-                    productList.Add(new PartInfo
-                    {
-                        Name = product["mpn"].ToString(),
-                        Part = product["number"].ToString(),
-                        Description = productInfo.Description ?? "",
-                        Info = productInfo,
-                        HasSymbol = hasSymbol,
-                        HasFootprint = hasFootprint,
-                        Has3d = has3d,
-                    });
-                }
-                
-                Debug.WriteLine($"[API] Found {productList.Count} products");
-                Console.WriteLine($"[API] Found {productList.Count} products");
-                return productList;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[API] Error: {ex.Message}");
-                Console.WriteLine($"[API] Error: {ex.Message}");
-                return null;
-            }
+            JObject obj = JObject.Parse(result);
+            var products = obj["result"]?["productList"] as JArray ?? new JArray();
+            return products.Select(ParsePart).ToList();
         }
     }
 }

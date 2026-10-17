@@ -4,7 +4,7 @@ This copy has been modified for Altium Designer 25 and the FSUK-BMS project.
 
 ## Celestial-style passive symbols
 
-Resistors (prefix `R`) and capacitors (prefix `C`) no longer come in as a generic box. They are drawn with the same symbols as the Celestial library's `SCH - PASSIVES - RESISTOR.SCHLIB` and `SCH - PASSIVES - CAPACITOR.SCHLIB`, see [CelestialPassives.cs](/EasyEDA-Loader/CelestialPassives.cs). The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part still uses the normal auto-generated symbol.
+Resistors (prefix `R`) and capacitors (prefix `C`) no longer come in as a generic box. They are drawn with the same symbols as the Celestial library's `SCH - PASSIVES - RESISTOR.SCHLIB` and `SCH - PASSIVES - CAPACITOR.SCHLIB`, see [CelestialPassives.cs](/EasyEDA-Loader/CelestialPassives.cs). The geometry is copied into the plugin, so the Celestial library is **not** needed at runtime. Every other part is converted from its EasyEDA drawing (see below).
 
 | | Resistor | Capacitor |
 |---|---|---|
@@ -18,6 +18,49 @@ All text is centre-justified with Autoposition off. Autoposition is off because 
 To add another passive (e.g. inductor), open the Celestial symbol in Altium and read off each pin's location, rotation and length, plus every line/polyline vertex, from the Properties panel. Then add a block in `CelestialPassives.CreateComponent`, add the prefix to `IsSupported`, and set its text offset in `TextOffset` (and a formatter in `FormatValue` if needed). `EESCH.CreatePolyline` draws a polyline from a list of (x, y) pairs in mils.
 
 > **The cached symbol trap:** if a part with the same name already exists in `Documents/AltiumEE/EasyEDA.SchLib`, the loader reuses it and never runs the drawing code. Delete the old part from the SchLib before re-importing it to see a symbol change.
+
+## Symbols drawn like EasyEDA
+
+Every other part is no longer a generated box: [SymbolConverter.cs](/EasyEDA-Loader/SymbolConverter.cs) rebuilds the EasyEDA drawing itself, and the preview pane draws the same converted geometry. Parts with no readable pins fall back to the old generated box.
+
+| | EasyEDA (std) | Altium |
+|---|---|---|
+| Units | 1 unit = 10 mil | mil |
+| Y axis | down (SVG) | up |
+| Origin | `head.x/head.y` | same point, nudged so pin ends land on the 100 mil grid |
+| Pin position | electrical end, path runs toward the body | `Location` = body end, `Orientation` points to the electrical end |
+
+So `x_alt = (x - ox) * 10`, `y_alt = -(y - oy) * 10`, and every direction's Y flips. Pin length and side come from the pin path (`h`/`v`/`L`), with the rotation field as a fallback.
+
+| EasyEDA shape | Altium |
+|---|---|
+| `P` pin | pin with number, name, show/hide flags and electrical type. Inversion dot → `Symbol_OuterEdge = eDot` (pin stretched to the body), clock → `Symbol_InnerEdge = eClock` |
+| `R` rect | rectangle, Altium's yellow body fill |
+| `PL` / `PG` | polyline / polygon; fills matching the stroke stay solid (arrows, diode triangles) |
+| `C` / `E` | ellipse |
+| `A` arc | arc / elliptical arc; centre from the SVG endpoint form, start/end swapped because the Y flip reverses the direction |
+| `PT` path | M/L/H/V/Z kept, C/Q/A curves flattened into short segments |
+
+## Request caching
+
+EasyEDA's CloudFront blocks an IP for a while (HTTP 403) after a burst of requests, so every request goes through [ApiCache.cs](/EasyEDA-Loader/API/ApiCache.cs):
+
+- Memory cache for the Altium session, plus a disk cache in `%LOCALAPPDATA%\EasyEDA-Loader\cache\`: 3D models forever, photos 1 year, part JSON 90 days, category tree 7 days, searches and browse pages 12 hours.
+- Two callers asking for the same thing share one download; requests to one host are at least 0.4 s apart.
+- After a 403/429 the host is left alone for 10 minutes, and any cached copy (however old) is served instead of an error. Errors show inline in the dialog, not in a popup.
+- The preview waits 350 ms after the selection changes, so arrowing through the list doesn't fetch every row.
+
+Delete the cache folder to force fresh data.
+
+## LCSC-style browsing
+
+The dialog has a category tree, filter columns (package, manufacturer and the category's own parameters) and paged results with stock, price and Basic/Extended class, using EasyEDA Pro's catalog endpoints ([CatalogApi.cs](/EasyEDA-Loader/API/CatalogApi.cs), [DialogWindow.Browse.cs](/EasyEDA-Loader/DialogWindow.Browse.cs)). The whole dialog is dark, with a dark title bar.
+
+## To do
+
+- [ ] **Offline parts from EasyEDA Pro.** The EasyEDA Pro desktop client ships with ~10,000 common parts. Read them from the user's own local install (not copied into this repo, since the data belongs to EasyEDA/LCSC) and use them before going online. First step: install EasyEDA Pro, run it offline/half-offline once, then inspect the library files read-only for format, part count and whether LCSC numbers are stored. Pro uses its own format, so it needs a second reader feeding `SymbolConverter` and the footprint code.
+- [ ] Share the cache between team members (export/import buttons).
+- [ ] Background pre-fetch of a BOM's LCSC numbers at a gentle pace.
 
 ## Other changes
 

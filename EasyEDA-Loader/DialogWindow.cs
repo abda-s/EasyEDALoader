@@ -45,6 +45,7 @@ namespace EasyEDA_Loader
             SelectedComponents = new List<ComponentSelection>();
             
             resultsGrid.ItemsSource = searchResults;
+            searchResults.CollectionChanged += (s, e) => UpdateResultsEmptyState();
             
             resultsGrid.SelectionChanged += ResultsGrid_SelectionChanged;
 
@@ -65,67 +66,28 @@ namespace EasyEDA_Loader
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // Apply Altium theme colors after window is loaded
-            ApplyAltiumTheme();
+            // Colours come from the dark palette in DialogWindow.xaml, matched to the
+            // DevExpress theme Altium uses, so every control shares one theme.
+            UpdateResultsEmptyState();
+            _ = LoadCategoriesAsync();
         }
 
-        private void ApplyAltiumTheme()
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+        // Dark title bar to match the dark window (Windows 10 2004+ / 11; ignored elsewhere).
+        protected override void OnSourceInitialized(EventArgs e)
         {
+            base.OnSourceInitialized(e);
             try
             {
-                // Get Altium's skin colors
-                var lookAndFeel = new UserLookAndFeel(this);
-                var skin = CommonSkins.GetSkin(lookAndFeel);
-                
-                if (skin != null)
-                {
-                    // Apply background color to main grid
-                    var windowColor = skin.Colors.GetColor("Window");
-                    var mainGrid = (System.Windows.Controls.Grid)this.Content;
-                    mainGrid.Background = new SolidColorBrush(Color.FromArgb(
-                        windowColor.A, windowColor.R, windowColor.G, windowColor.B));
-                    
-                    // Apply text color to all TextBlocks
-                    var textColor = skin.Colors.GetColor("WindowText");
-                    var textBrush = new SolidColorBrush(Color.FromArgb(
-                        textColor.A, textColor.R, textColor.G, textColor.B));
-                    
-                    // Set foreground for the window (will cascade to children)
-                    this.Resources[SystemColors.WindowTextBrushKey] = textBrush;
-                    
-                    // Apply to TextBlocks directly
-                    ApplyColorToTextBlocks(mainGrid, textBrush);
-                }
+                const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+                int enabled = 1;
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref enabled, sizeof(int));
             }
             catch
             {
-                // If theme detection fails, use dark colors as fallback
-                var mainGrid = (System.Windows.Controls.Grid)this.Content;
-                mainGrid.Background = new SolidColorBrush(Color.FromRgb(45, 45, 48));
-                
-                var textBrush = new SolidColorBrush(Color.FromRgb(241, 241, 241));
-                ApplyColorToTextBlocks(mainGrid, textBrush);
-            }
-        }
-
-        private void ApplyColorToTextBlocks(System.Windows.DependencyObject parent, SolidColorBrush brush)
-        {
-            int childCount = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
-            for (int i = 0; i < childCount; i++)
-            {
-                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
-                
-                if (child is System.Windows.Controls.TextBlock textBlock)
-                {
-                    textBlock.Foreground = brush;
-                }
-                else if (child is System.Windows.Controls.ContentControl contentControl)
-                {
-                    contentControl.Foreground = brush;
-                }
-                
-                // Recursively apply to children
-                ApplyColorToTextBlocks(child, brush);
             }
         }
 
@@ -154,6 +116,7 @@ namespace EasyEDA_Loader
         {
             try
             {
+                previewEmptyText.Visibility = Visibility.Collapsed;
                 thumbnailImage.Source = null;
                 symbolCanvas.Children.Clear();
                 footprintCanvas.Children.Clear();
@@ -161,6 +124,10 @@ namespace EasyEDA_Loader
                 _currentModel = null;
                 _currentRoot = null;
                 saveModelButton.IsEnabled = false;
+
+                // Only fetch once the selection settles, so arrowing through the list doesn't
+                // send one request per row (EasyEDA blocks bursts).
+                await Task.Delay(350, cancellationToken);
 
                 var root = await Task.Run(() => Api.GetComponentJsonAsync(partViewModel.PartInfo.Part, cancellationToken));
 
@@ -174,7 +141,7 @@ namespace EasyEDA_Loader
 
                 if (_currentComponent.Symbol?.Shapes != null)
                 {
-                    SymbolDrawing.DrawComponent(symbolCanvas, _currentComponent.Symbol.Shapes);
+                    SymbolDrawing.DrawComponent(symbolCanvas, _currentComponent.Symbol);
                     _ = symbolCanvas.Dispatcher.InvokeAsync(() =>
                     {
                         _symbolHelper.FitToBoundingBox();
@@ -235,13 +202,24 @@ namespace EasyEDA_Loader
             catch (OperationCanceledException)
             {
             }
-            catch
+            catch (Exception ex)
             {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    previewEmptyText.Text = ex is ApiCache.RateLimitedException
+                        ? ex.Message
+                        : $"Couldn't load this part's preview: {ex.Message}";
+                    previewEmptyText.Visibility = Visibility.Visible;
+                }
             }
         }
 
+        private const string PreviewHint = "Select a part in the list to see its photo, symbol and footprint.";
+
         private void ClearPreview()
         {
+            previewEmptyText.Text = PreviewHint;
+            previewEmptyText.Visibility = Visibility.Visible;
             thumbnailImage.Source = null;
             symbolCanvas.Children.Clear();
             footprintCanvas.Children.Clear();
@@ -260,7 +238,8 @@ namespace EasyEDA_Loader
         {
             if (string.IsNullOrWhiteSpace(searchTextBox.Text))
             {
-                MessageBox.Show("Please enter a part number to search.", "Search Required", MessageBoxButton.OK, MessageBoxImage.Information);
+                pageText.Text = "Type an LCSC number or keyword first, e.g. C2040 or TCAN1042.";
+                searchTextBox.Focus();
                 return;
             }
 
@@ -270,13 +249,14 @@ namespace EasyEDA_Loader
 
             try
             {
-                Mouse.OverrideCursor = Cursors.Wait;
+                resultsGrid.ShowLoadingPanel = true;
 
                 // Run the API call on a background thread
                 var searchText = searchTextBox.Text;
                 var results = await Task.Run(() => Api.SearchProductInfoAsync(searchText));
 
                 // Add results on the UI thread
+                ShowKeywordSearchPaging(results?.Count ?? 0);
                 if (results != null && results.Count > 0)
                 {
                     foreach (var part in results)
@@ -286,16 +266,16 @@ namespace EasyEDA_Loader
                 }
                 else
                 {
-                    MessageBox.Show("No results found.", "Search", MessageBoxButton.OK, MessageBoxImage.Information);
+                    pageText.Text = $"No parts found for \"{searchText.Trim()}\". Check the LCSC number, or browse a category instead.";
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Search failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                pageText.Text = $"Search failed: {ex.Message}. Check your internet connection and try again.";
             }
             finally
             {
-                Mouse.OverrideCursor = null;
+                resultsGrid.ShowLoadingPanel = false;
                 searchButton.IsEnabled = true;
             }
         }
@@ -359,7 +339,10 @@ namespace EasyEDA_Loader
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to load component data: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Parts fetched before the failure are cached, so a retry only re-requests the rest.
+                pageText.Text = ex is ApiCache.RateLimitedException
+                    ? ex.Message
+                    : $"Couldn't load the selected parts: {ex.Message}";
                 addToLibraryButton.IsEnabled = true;
                 cancelButton.IsEnabled = true;
             }
@@ -486,6 +469,13 @@ namespace EasyEDA_Loader
 
         public string Name => PartInfo.Name ?? PartInfo.Part;
         public string Description => PartInfo.Description ?? "";
+        public string Part => PartInfo.Part ?? "";
+        public string Manufacturer => PartInfo.Manufacturer ?? "";
+        public string Package => PartInfo.Package ?? "";
+        public long Stock => PartInfo.Stock;
+        public string Price => PartInfo.Price ?? "";
+        public string PriceBreaks => PartInfo.PriceBreaks ?? "";
+        public string PartClass => PartInfo.PartClass ?? "";
 
         public PartInfoViewModel(EasyedaApi.PartInfo partInfo, DialogWindow parentWindow)
         {

@@ -185,6 +185,104 @@ namespace EasyEDA_Loader
             c.AddSchObject(poly);
         }
 
+        // Rectangle with explicit colours; solid=false leaves it hollow.
+        public static void CreateRectangle(ISch_Lib schLib, ISch_Component c, double x1, double y1, double x2, double y2, int color, int areaColor, bool solid)
+        {
+            var rect = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.eRectangle, SCH.TObjectCreationMode.eCreate_Default) as ISch_Rectangle;
+            if (rect == null)
+                return;
+            rect.SetState_LineWidth(TSize.eSmall);
+            rect.SetState_Location(new DXP.Point { X = AltiumApi.MilsToCoord(x1), Y = AltiumApi.MilsToCoord(y1) });
+            rect.SetState_Corner(new DXP.Point { X = AltiumApi.MilsToCoord(x2), Y = AltiumApi.MilsToCoord(y2) });
+            rect.SetState_Color(color);
+            rect.SetState_AreaColor(areaColor);
+            rect.SetState_IsSolid(solid);
+            rect.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+            rect.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+            c.AddSchObject(rect);
+        }
+
+        // points are (x, y) pairs in mils
+        public static void CreatePolygon(ISch_Lib schLib, ISch_Component c, int color, int areaColor, bool solid, params double[] points)
+        {
+            var poly = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.ePolygon, SCH.TObjectCreationMode.eCreate_Default) as ISch_Polygon;
+            if (poly == null)
+                return;
+
+            int count = points.Length / 2;
+            poly.SetState_LineWidth(TSize.eSmall);
+            poly.SetState_VerticesCount(count);
+            for (int i = 0; i < count; i++)
+            {
+                poly.SetState_Vertex(i + 1, new DXP.Point
+                {
+                    X = AltiumApi.MilsToCoord(points[i * 2]),
+                    Y = AltiumApi.MilsToCoord(points[i * 2 + 1])
+                });
+            }
+            poly.SetState_Color(color);
+            poly.SetState_AreaColor(areaColor);
+            poly.SetState_IsSolid(solid);
+            poly.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+            poly.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+            c.AddSchObject(poly);
+        }
+
+        // Circle when rx == ry. Location is the centre.
+        public static void CreateEllipse(ISch_Lib schLib, ISch_Component c, double cx, double cy, double rx, double ry, int color, int areaColor, bool solid)
+        {
+            var ellipse = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.eEllipse, SCH.TObjectCreationMode.eCreate_Default) as ISch_Ellipse;
+            if (ellipse == null)
+                return;
+            ellipse.SetState_LineWidth(TSize.eSmall);
+            ellipse.SetState_Location(new DXP.Point { X = AltiumApi.MilsToCoord(cx), Y = AltiumApi.MilsToCoord(cy) });
+            ellipse.SetState_Radius(AltiumApi.MilsToCoord(rx));
+            ellipse.SetState_SecondaryRadius(AltiumApi.MilsToCoord(ry));
+            ellipse.SetState_Color(color);
+            ellipse.SetState_AreaColor(areaColor);
+            ellipse.SetState_IsSolid(solid);
+            ellipse.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+            ellipse.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+            c.AddSchObject(ellipse);
+        }
+
+        // Drawn counter-clockwise from startAngle to endAngle (degrees, 0 = +X).
+        public static void CreateArc(ISch_Lib schLib, ISch_Component c, double cx, double cy, double rx, double ry, double startAngle, double endAngle, int color)
+        {
+            var location = new DXP.Point { X = AltiumApi.MilsToCoord(cx), Y = AltiumApi.MilsToCoord(cy) };
+            if (System.Math.Abs(rx - ry) < 0.5)
+            {
+                var arc = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.eArc, SCH.TObjectCreationMode.eCreate_Default) as ISch_Arc;
+                if (arc == null)
+                    return;
+                arc.SetState_LineWidth(TSize.eSmall);
+                arc.SetState_Location(location);
+                arc.SetState_Radius(AltiumApi.MilsToCoord(rx));
+                arc.SetState_StartAngle(startAngle);
+                arc.SetState_EndAngle(endAngle);
+                arc.SetState_Color(color);
+                arc.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+                arc.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+                c.AddSchObject(arc);
+            }
+            else
+            {
+                var arc = AltiumApi.GlobalVars.SCHServer.SchObjectFactory(SCH.TObjectId.eEllipticalArc, SCH.TObjectCreationMode.eCreate_Default) as ISch_EllipticalArc;
+                if (arc == null)
+                    return;
+                arc.SetState_LineWidth(TSize.eSmall);
+                arc.SetState_Location(location);
+                arc.SetState_Radius(AltiumApi.MilsToCoord(rx));
+                arc.SetState_SecondaryRadius(AltiumApi.MilsToCoord(ry));
+                arc.SetState_StartAngle(startAngle);
+                arc.SetState_EndAngle(endAngle);
+                arc.SetState_Color(color);
+                arc.SetState_OwnerPartId(schLib.GetState_CurrentSchComponentPartId());
+                arc.SetState_OwnerPartDisplayMode(schLib.GetState_CurrentSchComponentDisplayMode());
+                c.AddSchObject(arc);
+            }
+        }
+
         public static void AssignFootprint(ISch_Component c, string libraryPath, string modelName, string modelMapping)
         {
             var modelType = "PCBLIB";

@@ -6,71 +6,186 @@
     xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
     xmlns:dx="http://schemas.devexpress.com/winfx/2008/xaml/core"
     xmlns:dxe="http://schemas.devexpress.com/winfx/2008/xaml/editors"
+    xmlns:local="clr-namespace:EasyEDA_Loader"
     mc:Ignorable="d"
-    Title="EasyEDA Component Loader" 
-    Height="600" 
-    Width="1100"
-    MinHeight="500"
-    MinWidth="900"
+    Title="EasyEDA Component Loader"
+    Height="880"
+    Width="1440"
+    MinHeight="680"
+    MinWidth="1080"
     WindowStartupLocation="CenterScreen"
     ShowInTaskbar="False"
     ResizeMode="CanResize"
+    Background="{DynamicResource BgBrush}"
+    Foreground="{DynamicResource TextBrush}"
+    FontSize="12"
     Loaded="Window_Loaded">
 <Window.Resources>
+    <!-- One dark palette, matched to the DevExpress theme Altium uses (inputs 46, lists 51, rows 59, headers 72).
+         Text on BgBrush: TextBrush ~ 12:1, MutedBrush ~ 6:1 (both above the 4.5:1 minimum). -->
+    <SolidColorBrush x:Key="BgBrush" Color="#2B2B2B"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#333333"/>
+    <SolidColorBrush x:Key="WellBrush" Color="#232323"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#474747"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#E6E6E6"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#A8A8A8"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#E6E6E6"/>
+
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+    </Style>
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="Muted" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="Panel" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style x:Key="Well" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource WellBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
     </Style>
 </Window.Resources>
-<Grid x:Name="mainGrid">
-<Grid.ColumnDefinitions>
-    <ColumnDefinition Width="*"/>
-    <ColumnDefinition Width="350"/>
-</Grid.ColumnDefinitions>
-<Grid.RowDefinitions>
-    <RowDefinition Height="Auto"/>
-    <RowDefinition Height="*"/>
-    <RowDefinition Height="Auto"/>
-</Grid.RowDefinitions>
 
-        <!-- Search Panel -->
-        <Border Grid.Row="0" Grid.Column="0" Padding="12,15,12,10">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+<Grid x:Name="mainGrid" Margin="16">
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="16"/>
+        <ColumnDefinition Width="320"/>
+    </Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="12"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="12"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="12"/>
+        <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Quick search -->
+    <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource Panel}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="LCSC # or keyword" Style="{StaticResource FieldLabel}" Margin="0,0,10,0"/>
+            <dxe:TextEdit x:Name="searchTextBox" Grid.Column="1" Height="28" Margin="0,0,8,0"
+                          NullText="e.g. C2040, TCAN1042, 10k 0402"
+                          VerticalContentAlignment="Center" KeyDown="SearchTextBox_KeyDown"/>
+            <dx:SimpleButton x:Name="searchButton" Grid.Column="2" Content="Search" Width="90" Height="28"
+                             Click="SearchButton_Click"/>
+        </Grid>
+    </Border>
+
+    <!-- Browse: categories + filter columns -->
+    <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource Panel}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="250"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Text="Browse the LCSC catalogue" Style="{StaticResource SectionTitle}"/>
+
+            <!-- Search within + active filters -->
+            <Grid Grid.Row="1" Grid.Column="2" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" 
-                           Text="Enter part number to search (e.g. C2040):"
-                           Margin="0,0,0,8"/>
-
-                <dxe:TextEdit x:Name="searchTextBox" 
-                         Grid.Row="1" 
-                         Grid.Column="0"
-                         Margin="0,0,8,0"
-                         VerticalContentAlignment="Center"
-                         Height="24"
-                         KeyDown="SearchTextBox_KeyDown"/>
-
-                <dx:SimpleButton x:Name="searchButton" 
-                        Grid.Row="1" 
-                        Grid.Column="1"
-                        Content="Search"
-                        Width="75"
-                        Height="24"
-                        Click="SearchButton_Click"/>
+                <TextBlock Grid.Column="0" Text="Search within" Style="{StaticResource FieldLabel}" Margin="0,0,10,0"/>
+                <dxe:TextEdit x:Name="withinTextBox" Grid.Column="1" Height="26" NullText="MPN, manufacturer, value..."
+                              VerticalContentAlignment="Center" KeyDown="WithinTextBox_KeyDown"/>
+                <dx:SimpleButton x:Name="clearFiltersButton" Grid.Column="2" Content="Clear filters"
+                                 Height="26" Width="100" Margin="8,0,0,0" Click="ClearFiltersButton_Click"/>
+                <TextBlock x:Name="browseStatusText" Grid.Column="3" Margin="12,0,0,0" Style="{StaticResource Muted}"
+                           TextTrimming="CharacterEllipsis" Text="Choose a category on the left to start."
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
             </Grid>
-        </Border>
 
-        <!-- Results Grid -->
-        <dxg:GridControl x:Name="resultsGrid" 
-                         Grid.Row="1"
-                         Grid.Column="0"
-                         Margin="12,0,12,10"
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Categories" Style="{StaticResource FieldLabel}" Margin="0,0,0,8"/>
+
+            <Grid Grid.Row="2" Grid.Column="0">
+                <dxg:TreeViewControl x:Name="categoryTree"
+                                     TreeDerivationMode="ChildNodesSelector"
+                                     ChildNodesPath="Children"
+                                     TreeViewFieldName="Name"
+                                     CurrentItemChanged="CategoryTree_CurrentItemChanged"/>
+                <TextBlock x:Name="categoryStatusText" Text="Loading categories..." Margin="10"
+                           VerticalAlignment="Top" TextWrapping="Wrap" Style="{StaticResource Muted}"/>
+            </Grid>
+
+            <Grid Grid.Row="2" Grid.Column="2">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="facetsPanel">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:FacetViewModel}">
+                                <DockPanel Width="190" Margin="0,0,10,0">
+                                    <TextBlock DockPanel.Dock="Top" Text="{Binding Header}" FontWeight="SemiBold"
+                                               Margin="0,0,0,4" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                    <dxe:TextEdit DockPanel.Dock="Top" Margin="0,0,0,4" Height="24" NullText="Filter this list"
+                                                  EditValue="{Binding Search, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <dxe:ListBoxEdit ItemsSource="{Binding VisibleValues}"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <dxe:ListBoxEdit.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type local:FacetValueViewModel}">
+                                                <dxe:CheckEdit Content="{Binding Value}" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                               ToolTip="{Binding Value}"
+                                                               EditValueChanged="FacetValue_EditValueChanged"/>
+                                            </DataTemplate>
+                                        </dxe:ListBoxEdit.ItemTemplate>
+                                    </dxe:ListBoxEdit>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <TextBlock x:Name="facetsEmptyText" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="4"
+                           VerticalAlignment="Top"
+                           Text="Filters for the chosen category appear here, like on lcsc.com: tick values to narrow the results."/>
+            </Grid>
+        </Grid>
+    </Border>
+
+    <!-- Results -->
+    <Grid Grid.Row="4" Grid.Column="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <dxg:GridControl x:Name="resultsGrid"
                          AutoGenerateColumns="None"
                          SelectionMode="Row"
                          CurrentItemChanged="ResultsGrid_CurrentItemChanged">
@@ -84,165 +199,155 @@
                                ShowColumnHeaders="True"
                                ShowAutoFilterRow="False"/>
             </dxg:GridControl.View>
-            
+
             <dxg:GridControl.Columns>
-                <dxg:GridColumn Header="" 
-                                FieldName="AddToLibrary" 
-                                Width="40"
-                                MinWidth="40"
-                                MaxWidth="40"
-                                AllowResizing="False"
-                                FixedWidth="True">
+                <dxg:GridColumn Header="Add" FieldName="AddToLibrary" Width="44" MinWidth="44" MaxWidth="44"
+                                AllowResizing="False" FixedWidth="True">
                     <dxg:GridColumn.CellTemplate>
                         <DataTemplate>
                             <dxe:CheckEdit IsChecked="{Binding Path=RowData.Row.AddToLibrary, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"/>
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           ToolTip="Add this part to the library"/>
                         </DataTemplate>
                     </dxg:GridColumn.CellTemplate>
                 </dxg:GridColumn>
-
-                <dxg:GridColumn Header="FP" 
-                                FieldName="HasFootprint" 
-                                Width="40"
-                                MinWidth="40"
-                                MaxWidth="40"
-                                AllowResizing="False"
-                                FixedWidth="True">
+                <dxg:GridColumn Header="FP" FieldName="HasFootprint" Width="40" MinWidth="40" MaxWidth="40"
+                                AllowResizing="False" FixedWidth="True">
                     <dxg:GridColumn.CellTemplate>
                         <DataTemplate>
                             <dxe:CheckEdit IsChecked="{Binding Path=RowData.Row.HasFootprint, Mode=OneWay}"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      IsEnabled="False"/>
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" IsEnabled="False"
+                                           ToolTip="Footprint available"/>
                         </DataTemplate>
                     </dxg:GridColumn.CellTemplate>
                 </dxg:GridColumn>
-
-                <dxg:GridColumn Header="3D" 
-                                FieldName="Has3d" 
-                                Width="40"
-                                MinWidth="40"
-                                MaxWidth="40"
-                                AllowResizing="False"
-                                FixedWidth="True">
+                <dxg:GridColumn Header="3D" FieldName="Has3d" Width="40" MinWidth="40" MaxWidth="40"
+                                AllowResizing="False" FixedWidth="True">
                     <dxg:GridColumn.CellTemplate>
                         <DataTemplate>
                             <dxe:CheckEdit IsChecked="{Binding Path=RowData.Row.Has3d, Mode=OneWay}"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      IsEnabled="False"/>
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" IsEnabled="False"
+                                           ToolTip="3D model available"/>
                         </DataTemplate>
                     </dxg:GridColumn.CellTemplate>
                 </dxg:GridColumn>
-
-                <dxg:GridColumn Header="Name" 
-                                FieldName="Name" 
-                                Width="150"
-                                MinWidth="100"/>
-
-                <dxg:GridColumn Header="Description" 
-                                FieldName="Description" 
-                                Width="*"
-                                MinWidth="200"/>
+                <dxg:GridColumn Header="LCSC" FieldName="Part" Width="84" MinWidth="70"/>
+                <dxg:GridColumn Header="MPN" FieldName="Name" Width="160" MinWidth="100"/>
+                <dxg:GridColumn Header="Manufacturer" FieldName="Manufacturer" Width="120" MinWidth="80"/>
+                <dxg:GridColumn Header="Package" FieldName="Package" Width="84" MinWidth="60"/>
+                <dxg:GridColumn Header="Stock" FieldName="Stock" Width="90" MinWidth="70">
+                    <dxg:GridColumn.EditSettings>
+                        <dxe:TextEditSettings DisplayFormat="N0" HorizontalContentAlignment="Right"/>
+                    </dxg:GridColumn.EditSettings>
+                </dxg:GridColumn>
+                <dxg:GridColumn Header="Unit price" FieldName="Price" Width="80" MinWidth="70">
+                    <dxg:GridColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Path=RowData.Row.Price}" ToolTip="{Binding Path=RowData.Row.PriceBreaks}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,0"/>
+                        </DataTemplate>
+                    </dxg:GridColumn.CellTemplate>
+                </dxg:GridColumn>
+                <dxg:GridColumn Header="JLC" FieldName="PartClass" Width="70" MinWidth="60"/>
+                <dxg:GridColumn Header="Description" FieldName="Description" Width="*" MinWidth="200">
+                    <dxg:GridColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Path=RowData.Row.Description}" ToolTip="{Binding Path=RowData.Row.Description}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="4,0"/>
+                        </DataTemplate>
+                    </dxg:GridColumn.CellTemplate>
+                </dxg:GridColumn>
             </dxg:GridControl.Columns>
         </dxg:GridControl>
 
-        <!-- Bottom Panel with Options and Buttons -->
-        <Grid Grid.Row="2" Grid.Column="0" Margin="12,0,12,12">
+        <TextBlock x:Name="resultsEmptyText" Style="{StaticResource Muted}" HorizontalAlignment="Center"
+                   VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" IsHitTestVisible="False"
+                   Text="No parts yet. Search by LCSC number or keyword above, or choose a category to browse."/>
+
+        <!-- Pager -->
+        <Grid Grid.Row="1" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <dxe:CheckEdit x:Name="closeDocumentsCheckBox" 
-                          Content="Close library documents after adding"
-                          VerticalAlignment="Center"
-                          Margin="0,0,20,0"/>
-                <dxe:CheckEdit x:Name="placeInSchematicCheckBox" 
-                          Content="Place in schematic"
-                          IsChecked="True"
-                          VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                <dx:SimpleButton x:Name="saveModelButton" 
-                        Content="Save Model..."
-                        Width="100"
-                        Height="24"
-                        Margin="0,0,8,0"
-                        IsEnabled="False"
-                        Click="SaveModelButton_Click"/>
-                <dx:SimpleButton x:Name="addToLibraryButton" 
-                        Content="Add to Library"
-                        Width="120"
-                        Height="24"
-                        Margin="0,0,8,0"
-                        IsEnabled="False"
-                        Click="AddToLibraryButton_Click"/>
-                <dx:SimpleButton x:Name="cancelButton" 
-                        Content="Cancel"
-                        Width="75"
-                        Height="24"
-                        IsCancel="True"
-                        Click="CancelButton_Click"/>
-            </StackPanel>
+            <TextBlock x:Name="pageText" Grid.Column="0" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/>
+            <dx:SimpleButton x:Name="prevPageButton" Grid.Column="1" Content="Previous" Width="90" Height="28" Margin="0,0,8,0"
+                             IsEnabled="False" Click="PrevPageButton_Click"/>
+            <dx:SimpleButton x:Name="nextPageButton" Grid.Column="2" Content="Next" Width="90" Height="28"
+                             IsEnabled="False" Click="NextPageButton_Click"/>
         </Grid>
+    </Grid>
 
-        <!-- Side Panel with Preview -->
-        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" 
-                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" 
-                BorderThickness="1,0,0,0"
-                Padding="10">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+    <!-- Options + actions -->
+    <Grid Grid.Row="6" Grid.Column="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <dxe:CheckEdit x:Name="placeInSchematicCheckBox" Content="Place in schematic after adding"
+                           IsChecked="True" VerticalAlignment="Center" Margin="0,0,24,0"/>
+            <dxe:CheckEdit x:Name="closeDocumentsCheckBox" Content="Close library documents after adding"
+                           VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <dx:SimpleButton x:Name="saveModelButton" Content="Save 3D model..." Width="120" Height="30" Margin="0,0,8,0"
+                             IsEnabled="False" Click="SaveModelButton_Click"/>
+            <dx:SimpleButton x:Name="cancelButton" Content="Cancel" Width="90" Height="30" Margin="0,0,8,0"
+                             IsCancel="True" Click="CancelButton_Click"/>
+            <dx:SimpleButton x:Name="addToLibraryButton" Content="Add to library" Width="130" Height="30"
+                             IsEnabled="False" IsDefault="False" Click="AddToLibraryButton_Click"/>
+        </StackPanel>
+    </Grid>
 
-                <TextBlock Grid.Row="0" 
-                           Text="Preview" 
-                           FontSize="14" 
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,10"/>
+    <!-- Preview -->
+    <Border Grid.Row="0" Grid.RowSpan="7" Grid.Column="2" Style="{StaticResource Panel}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="3*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="3*"/>
+            </Grid.RowDefinitions>
 
-                <!-- Thumbnail -->
-                <Viewbox x:Name="thumbnailViewbox" Grid.Row="1" 
-                         MinHeight="50" 
-                         HorizontalAlignment="Center" 
-                         Stretch="Uniform" 
-                         Margin="0,0,0,10">
+            <TextBlock Grid.Row="0" Text="Preview" Style="{StaticResource SectionTitle}"/>
+
+            <TextBlock Grid.Row="1" Text="Photo" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+            <Border Grid.Row="2" Style="{StaticResource Well}" Margin="0,0,0,12">
+                <Viewbox x:Name="thumbnailViewbox" Stretch="Uniform" Margin="8">
                     <Image x:Name="thumbnailImage" Height="50" Width="50"/>
                 </Viewbox>
+            </Border>
 
-                <!-- Symbol Canvas -->
-                <ScrollViewer x:Name="symbolCanvasView" 
-                              Grid.Row="2"
-                              VerticalAlignment="Stretch" 
-                              HorizontalAlignment="Stretch" 
-                              Margin="0,0,0,10" 
-                              HorizontalScrollBarVisibility="Hidden" 
-                              VerticalScrollBarVisibility="Hidden" 
-                              Background="Black">
-                    <Canvas x:Name="symbolCanvas" Height="100" Width="100" 
+            <TextBlock Grid.Row="3" Text="Symbol" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+            <Border Grid.Row="4" Style="{StaticResource Well}" Margin="0,0,0,12">
+                <ScrollViewer x:Name="symbolCanvasView"
+                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                              Background="{StaticResource WellBrush}">
+                    <Canvas x:Name="symbolCanvas" Height="100" Width="100"
                             HorizontalAlignment="Left" VerticalAlignment="Top"/>
                 </ScrollViewer>
+            </Border>
 
-                <!-- Footprint Canvas -->
-                <ScrollViewer x:Name="footprintCanvasView" 
-                              Grid.Row="3"
-                              VerticalAlignment="Stretch" 
-                              HorizontalAlignment="Stretch" 
-                              HorizontalScrollBarVisibility="Hidden" 
-                              VerticalScrollBarVisibility="Hidden" 
-                              Background="Black">
-                    <Canvas x:Name="footprintCanvas" Height="100" Width="100" 
+            <TextBlock Grid.Row="5" Text="Footprint" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+            <Border Grid.Row="6" Style="{StaticResource Well}">
+                <ScrollViewer x:Name="footprintCanvasView"
+                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                              Background="{StaticResource WellBrush}">
+                    <Canvas x:Name="footprintCanvas" Height="100" Width="100"
                             HorizontalAlignment="Left" VerticalAlignment="Top"/>
                 </ScrollViewer>
-            </Grid>
-        </Border>
-    </Grid>
+            </Border>
+
+            <TextBlock x:Name="previewEmptyText" Grid.Row="2" Grid.RowSpan="5" Style="{StaticResource Muted}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                       Margin="16" IsHitTestVisible="False"
+                       Text="Select a part in the list to see its photo, symbol and footprint."/>
+        </Grid>
+    </Border>
+</Grid>
 </Window>
