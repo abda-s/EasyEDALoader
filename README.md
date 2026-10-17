@@ -21,6 +21,7 @@ To add another passive (e.g. inductor), open the Celestial symbol in Altium and 
 
 ## Other changes
 
+- **Part follows the cursor when placed.** Instead of dropping the part at the sheet origin, `PlaceComponent` copies it and runs Altium's own `Sch:Paste`, so it drags on the cursor until you click (Esc cancels, Space rotates). This overwrites the clipboard. If that fails, it falls back to a click-to-place crosshair (`ChooseLocationInteractively`). `IntegratedLibraryManager.PlaceLibraryComponent` was not used: it places nothing when called from code.
 - **No error popup after import.** Primitive import failures are still written to `Documents/AltiumEE/import-errors.log`, but the warning dialog was removed.
 - **`ComponentPolarityLayer`** in EasyEDA footprints is mapped to Mechanical 12, instead of throwing a layer-map error.
 - **Altium Designer 25:** the project targets `net8.0-windows` and references DevExpress **v25.2** assemblies, copied from the AD25 install into `EasyEDA-Loader/Assemblies/` (gitignored).

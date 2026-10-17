@@ -54,6 +54,38 @@ namespace EasyEDA_Loader
             currentSheet.AddSchObject(newComponent);
             newComponent.MoveToXY(0, 0);
             newComponent.SetState_Orientation(TRotationBy90.eRotate0);
+
+            // Hand the part to Altium's own Paste, which drags it on the cursor as a
+            // preview until the user clicks (Esc cancels). Uses the clipboard.
+            bool onSheet = true;
+            try
+            {
+                DXP.Utils.RunCommand("Sch:Deselect", "Action=All");
+                newComponent.SetState_Selection(true);
+                DXP.Utils.RunCommand("Sch:Copy", "");
+                currentSheet.RemoveSchObject(newComponent);
+                onSheet = false;
+                currentSheet.GraphicallyInvalidate();
+                DXP.Utils.RunCommand("Sch:Paste", "");
+                return;
+            }
+            catch (Exception ex)
+            {
+                ImportLog.Error($"Paste-to-cursor placement failed for {partName}, falling back to click-to-place", ex);
+            }
+
+            // Fallback: crosshair, click where the part goes. Esc cancels; the part stays
+            // in EasyEDA.SchLib either way.
+            if (onSheet)
+                currentSheet.RemoveSchObject(newComponent);
+            var location = new DXP.Point();
+            if (!currentSheet.ChooseLocationInteractively(ref location, $"Click to place {partName}"))
+            {
+                currentSheet.GraphicallyInvalidate();
+                return;
+            }
+            currentSheet.AddSchObject(newComponent);
+            newComponent.MoveToXY(location.X, location.Y);
             currentSheet.GraphicallyInvalidate();
         }
 
