@@ -23,7 +23,11 @@ namespace EasyEDA_Loader
 
         protected override IServerDocument NewDocumentInstance(string argKind, string argFileName) => (IServerDocument)null;
 
-        protected override void InitializeCommands() => RegisterCommand("EasyEDARun", new CommandProc(Run));
+        protected override void InitializeCommands()
+        {
+            RegisterCommand("EasyEDARun", new CommandProc(Run));
+            RegisterCommand("EasyEDAImport", new CommandProc(BatchImport));
+        }
 
         private void RegisterCommand(string argCommandId, CommandProc commandProc) => ((DXP.CommandLauncher)CommandLauncher).RegisterCommand(argCommandId, (CommandProc)((IServerDocumentView view, ref string parameters) =>
         {
@@ -105,6 +109,147 @@ namespace EasyEDA_Loader
                 return;
             }
 
+            ImportSelections(dialog.SelectedComponents, currentDoc, dialog.CloseDocuments,
+                (schLibraryPath, partNames) =>
+                {
+                    // Only the last part goes on the cursor
+                    string last = partNames.FindLast(n => n != null);
+                    if (dialog.PlaceInSchematic && last != null)
+                        PlaceComponent(schLibraryPath, last);
+                },
+                (part, ex) => MessageBox.Show($"Failed to process component {part}: {ex.Message}", "EasyEDA Loader Error", MessageBoxButtons.OK, MessageBoxIcon.Hand));
+        }
+
+        public static string BatchResultPath => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AltiumEE", "batch-import.txt");
+
+        // EasyEDA-Loader:EasyEDAImport, no dialog. Parameters (Altium style, '|' separated):
+        //   Parts=C5219272,C13585,C13585   LCSC numbers, a repeated number places the part again
+        //   Place=True                     place on the current schematic in a grid (default True)
+        //   X=1000|Y=7000                  grid origin in mils (top-left)
+        //   StepX=1000|StepY=1200|PerRow=6 grid pitch in mils and parts per row
+        // Writes a per-part result to BatchResultPath; no message boxes.
+        private void BatchImport(IServerDocumentView argContext, ref string argParameters)
+        {
+            var p = ParseParameters(argParameters);
+            var report = new System.Text.StringBuilder();
+            report.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] EasyEDAImport {argParameters}");
+
+            var ids = (p.TryGetValue("PARTS", out var s) ? s : "")
+                .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            bool place = !p.TryGetValue("PLACE", out var pl) || !pl.Equals("False", StringComparison.OrdinalIgnoreCase);
+            int x0 = GetInt(p, "X", 1000), y0 = GetInt(p, "Y", 7000);
+            int stepX = GetInt(p, "STEPX", 1000), stepY = GetInt(p, "STEPY", 1200), perRow = Math.Max(1, GetInt(p, "PERROW", 6));
+
+            var currentDoc = AltiumApi.GlobalVars.Client.GetCurrentView()?.GetOwnerDocument();
+            if (currentDoc == null || ids.Length == 0)
+            {
+                report.AppendLine(ids.Length == 0 ? "ERROR no Parts= given" : "ERROR no current document");
+                File.WriteAllText(BatchResultPath, report.ToString());
+                return;
+            }
+
+            // Fetch every distinct part once (all requests go through ApiCache)
+            var api = new EasyedaApi();
+            var fetched = new System.Collections.Generic.Dictionary<string, ComponentSelection>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in ids)
+            {
+                if (fetched.ContainsKey(id)) continue;
+                try
+                {
+                    var parts = Task.Run(() => api.SearchProductInfoAsync(id)).GetAwaiter().GetResult();
+                    var info = parts.Find(q => string.Equals(q.Part, id, StringComparison.OrdinalIgnoreCase)) ?? (parts.Count > 0 ? parts[0] : null);
+                    if (info == null) throw new InvalidOperationException("not found on EasyEDA");
+                    var root = Task.Run(() => api.GetComponentJsonAsync(info.Part, CancellationToken.None)).GetAwaiter().GetResult();
+                    if (root?.Component == null) throw new InvalidOperationException("no component data");
+                    var fp = root.Component.PackageDetail?.Footprint;
+                    fetched[id] = new ComponentSelection
+                    {
+                        PartInfo = info,
+                        Root = root,
+                        IncludeFootprint = fp != null,
+                        Include3dModel = fp?.GetModel() != null,
+                    };
+                }
+                catch (Exception ex)
+                {
+                    report.AppendLine($"FAIL {id} fetch: {ex.Message}");
+                }
+            }
+
+            var distinct = new System.Collections.Generic.List<ComponentSelection>(fetched.Values);
+            var nameById = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string libPath = null;
+            ImportSelections(distinct, currentDoc, false,
+                (schLibraryPath, partNames) =>
+                {
+                    libPath = schLibraryPath;
+                    int i = 0;
+                    foreach (var kv in fetched)
+                    {
+                        if (partNames[i] != null) nameById[kv.Key] = partNames[i];
+                        i++;
+                    }
+                },
+                (part, ex) => report.AppendLine($"FAIL {part} import: {ex.Message}"));
+
+            if (place && libPath != null)
+            {
+                var sheet = AltiumApi.GlobalVars.SCHServer.GetCurrentSchDocument();
+                if (sheet == null)
+                    report.AppendLine("ERROR current document is not a schematic, nothing placed");
+                int n = 0;
+                foreach (var id in ids)
+                {
+                    if (sheet == null || !nameById.TryGetValue(id, out var name)) continue;
+                    try
+                    {
+                        var comp = AltiumApi.GlobalVars.SCHServer.LoadComponentFromLibrary(name, libPath);
+                        if (comp == null) throw new InvalidOperationException("not in library");
+                        sheet.AddSchObject(comp);
+                        int x = x0 + (n % perRow) * stepX, y = y0 - (n / perRow) * stepY;
+                        comp.MoveToXY(AltiumApi.MilsToCoord(x), AltiumApi.MilsToCoord(y));
+                        comp.SetState_Orientation(TRotationBy90.eRotate0);
+                        report.AppendLine($"OK   {id} {name} at {x},{y} mil");
+                        n++;
+                    }
+                    catch (Exception ex)
+                    {
+                        report.AppendLine($"FAIL {id} place: {ex.Message}");
+                    }
+                }
+                sheet?.GraphicallyInvalidate();
+            }
+            else
+            {
+                foreach (var kv in nameById) report.AppendLine($"OK   {kv.Key} {kv.Value} (library only)");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(BatchResultPath));
+            File.WriteAllText(BatchResultPath, report.ToString());
+        }
+
+        private static System.Collections.Generic.Dictionary<string, string> ParseParameters(string args)
+        {
+            var d = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in (args ?? "").Split('|'))
+            {
+                int eq = item.IndexOf('=');
+                if (eq > 0) d[item.Substring(0, eq).Trim().ToUpperInvariant()] = item.Substring(eq + 1).Trim();
+            }
+            return d;
+        }
+
+        private static int GetInt(System.Collections.Generic.Dictionary<string, string> d, string key, int def)
+            => d.TryGetValue(key, out var v) && int.TryParse(v, out var r) ? r : def;
+
+        // Imports symbol / footprint / 3D model for each selection into Documents\AltiumEE\EasyEDA.*lib,
+        // then calls place(schLibraryPath, libRefs) with the library names in selection order.
+        private static void ImportSelections(
+            System.Collections.Generic.List<ComponentSelection> selections, IServerDocument currentDoc, bool closeDocuments,
+            Action<string, System.Collections.Generic.List<string>> place, Action<string, Exception> onError)
+        {
+            var partNames = new System.Collections.Generic.List<string>();
             var ctx = new CancellationTokenSource();
             var api = new EasyedaApi();
             ImportLog.Reset();
@@ -124,8 +269,9 @@ namespace EasyEDA_Loader
             var schLib = EESCH.GetCurrentSchLibrary();
 
             // Process each selected component
-            foreach (var selection in dialog.SelectedComponents)
+            foreach (var selection in selections)
             {
+                partNames.Add(null);
                 try
                 {
                     var root = selection.Root;
@@ -178,6 +324,7 @@ namespace EasyEDA_Loader
 
                     // Create schematic symbol
                     string partName = ee_symbol.Head.Parameters.Name;
+                    partNames[partNames.Count - 1] = partName;
                     string description = productInfo?.Description ?? partName;
 
                     var existingComponent = schLib.GetState_SchComponentByLibRef(partName);
@@ -216,27 +363,21 @@ namespace EasyEDA_Loader
                         }
                     }
 
-                    // Place component in schematic if requested (only the last one)
-                    if (dialog.PlaceInSchematic && selection == dialog.SelectedComponents[dialog.SelectedComponents.Count - 1])
-                    {
-                        // Return to the original document before placing
-                        AltiumApi.GlobalVars.Client.ShowDocument(currentDoc);
-                        PlaceComponent(schLibraryPath, partName);
-                    }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to process component {selection.PartInfo.Name}: {ex.Message}", "EasyEDA Loader Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+                    onError(selection.PartInfo?.Part ?? selection.PartInfo?.Name, ex);
                 }
             }
 
-            // Return to the original document we started in
+            // Return to the original document we started in, then place
             AltiumApi.GlobalVars.Client.ShowDocument(currentDoc);
+            place(schLibraryPath, partNames);
 
             // Primitive failures are logged silently to ImportLog.LogPath (no popup)
 
             // Close the library documents if requested
-            if (dialog.CloseDocuments)
+            if (closeDocuments)
             {
                 AltiumApi.GlobalVars.Client.CloseDocument(pcbDocument);
                 AltiumApi.GlobalVars.Client.CloseDocument(schDocument);
