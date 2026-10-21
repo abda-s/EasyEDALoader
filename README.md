@@ -19,6 +19,21 @@ To add another passive (e.g. inductor), open the Celestial symbol in Altium and 
 
 > **The cached symbol trap:** if a part with the same name already exists in `Documents/AltiumEE/EasyEDA.SchLib`, the loader reuses it and never runs the drawing code. Delete the old part from the SchLib before re-importing it to see a symbol change.
 
+## Batch import without the dialog
+
+`EasyEDA-Loader:EasyEDAImport` imports a list of LCSC parts in one go, the same way the dialog does (symbol, footprint, 3D model, Celestial passives), and places them on the open schematic in a grid. It's meant for scripts, e.g. from DelphiScript:
+
+```pascal
+ResetParameters;
+AddStringParameter('Parts', 'C5219272,C13585,C13585');  // a repeated number places the part again
+AddStringParameter('Place', 'True');                     // False = library only
+AddStringParameter('X', '1000'); AddStringParameter('Y', '6500');        // grid origin, mils
+AddStringParameter('StepX', '1200'); AddStringParameter('StepY', '1500'); AddStringParameter('PerRow', '7');
+RunProcess('EasyEDA-Loader:EasyEDAImport');
+```
+
+No message boxes: the result for each part is written to `Documents/AltiumEE/batch-import.txt`. Requests still go through the cache.
+
 ## Symbols drawn like EasyEDA
 
 Every other part is no longer a generated box: [SymbolConverter.cs](/EasyEDA-Loader/SymbolConverter.cs) rebuilds the EasyEDA drawing itself, and the preview pane draws the same converted geometry. Parts with no readable pins fall back to the old generated box.
