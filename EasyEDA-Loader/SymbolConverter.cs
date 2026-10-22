@@ -181,6 +181,14 @@ namespace EasyEDA_Loader
             {
                 var start = sub.Points[0];
                 var end = sub.Points[sub.Points.Count - 1];
+                // Most symbols draw the pin line from the electrical end toward the body, but
+                // some draw it the other way (e.g. LCSC C44669: "M 415 295 h 10" with the pin at
+                // 425). The pin's own position is the electrical end, so start from whichever
+                // end of the line is closer to it.
+                double dStart = Pow(start.X - pin.Settings.PosX, 2) + Pow(start.Y - pin.Settings.PosY, 2);
+                double dEnd = Pow(end.X - pin.Settings.PosX, 2) + Pow(end.Y - pin.Settings.PosY, 2);
+                if (dEnd < dStart)
+                    (start, end) = (end, start);
                 dx = end.X - start.X;
                 dy = end.Y - start.Y;
                 cx = start.X;
